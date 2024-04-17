@@ -11,7 +11,5 @@ FROM debian:bookworm-slim
 COPY --from=builder /usr/src/internet_map/target/release/internet_map /usr/local/bin/internet_map/internet_map
 COPY --from=builder /usr/src/internet_map/public /usr/local/bin/internet_map/public
 
-WORKDIR /usr/local/bin/map
+WORKDIR /usr/local/bin/internet_map
 CMD ["./map"]
-
-# build: docker build -t internet_map:latest .
