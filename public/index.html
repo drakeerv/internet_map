@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drake's Website</title>
+
+    <link rel="stylesheet" href="leaflet/leaflet.css" />
+    <script src="leaflet/leaflet.js"></script>
+
+    <style>
+        html,
+        body,
+        #map {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        #intro {
+            position: absolute;
+            top: 0;
+            right: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 id="intro"></h1>
+    <div id="map"></div>
+
+    <script>
+        const intro = document.getElementById("intro");
+        const map = L.map("map").setView([30.0, 0.0], 3);
+
+        let alreadyResponded = !!localStorage.getItem("response");
+        intro.innerHTML = alreadyResponded ? "Your location has been added to the map!" : "Click to add you location to the map!";
+
+        function parseDate(date) {
+            const d = new Date(date);
+            return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} ${d.getHours()}:${d.getMinutes()}:${d.getSeconds()}`;
+        }
+
+        const userIcon = new L.Icon({
+            iconUrl: "leaflet/images/marker-icon-2x-red.png",
+            shadowUrl: "leaflet/images/marker-shadow.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+        }).addTo(map);
+
+        map.on("click", (event) => {
+            if (alreadyResponded) return;
+            const lat = event.latlng.lat;
+            const lon = event.latlng.lng;
+            const date = new Date().getTime();
+
+            fetch("/api/v1/add-location", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ lat, lon, date }),
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    localStorage.setItem("response", JSON.stringify(data));
+
+                    alreadyResponded = true;
+                    intro.innerHTML = "Your location has been added to the map!";
+
+                    L.marker([lat, lon], {icon: userIcon}).addTo(map).bindPopup(parseDate(date));
+                });
+        });
+
+        fetch("/api/v1/get-locations")
+            .then((response) => response.json())
+            .then((data) => {
+                const myLocation = JSON.parse(localStorage.getItem("response"));
+                data.forEach((location) => {
+                    if (myLocation && myLocation.lat === location.lat && myLocation.lon === location.lon && myLocation.date === location.date) {
+                        L.marker([location.lat, location.lon], {icon: userIcon}).addTo(map).bindPopup(parseDate(location.date));
+                    } else {
+                        L.marker([location.lat, location.lon]).addTo(map).bindPopup(parseDate(location.date));
+                    }
+                });
+            });
+    </script>
+</body>
+
+</html>
