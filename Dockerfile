@@ -12,4 +12,4 @@ COPY --from=builder /usr/src/internet_map/target/release/internet_map /usr/local
 COPY --from=builder /usr/src/internet_map/public /usr/local/bin/internet_map/public
 
 WORKDIR /usr/local/bin/internet_map
-CMD ["./map"]
+CMD ["./internet_map"]
