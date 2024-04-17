@@ -1,4 +1,4 @@
-FROM rust:1.72.2 as builder
+FROM rust:1.77.2-bookworm as builder
 
 WORKDIR /usr/src/internet_map
 COPY . .
@@ -14,4 +14,4 @@ COPY --from=builder /usr/src/internet_map/public /usr/local/bin/internet_map/pub
 WORKDIR /usr/local/bin/map
 CMD ["./map"]
 
-# build: docker build -t map .
+# build: docker build -t internet_map:latest .
