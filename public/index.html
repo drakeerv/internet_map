@@ -31,18 +31,32 @@
             border-radius: 5px;
             z-index: 1000;
         }
+
+        #update {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            padding: 5px;
+            border-radius: 5px;
+            background-color: white;
+            color: black;
+            cursor: pointer;
+            z-index: 1000;
+        }
     </style>
 </head>
 
 <body>
     <h1 id="intro"></h1>
+    <button id="update"></button>
     <div id="map"></div>
 
     <script>
         const intro = document.getElementById("intro");
+        const update = document.getElementById("update");
         const map = L.map("map").setView([30.0, 0.0], 3);
 
-        let alreadyResponded = !!localStorage.getItem("response");
+        let alreadyResponded = !!localStorage.getItem("location");
         intro.innerHTML = alreadyResponded ? "Your location has been added to the map!" : "Click to add you location to the map!";
 
         function parseDate(date) {
@@ -64,38 +78,61 @@
         }).addTo(map);
 
         map.on("click", (event) => {
-            if (alreadyResponded) return;
             const lat = event.latlng.lat;
             const lon = event.latlng.lng;
-            const date = new Date().getTime();
+            const time = new Date().getTime();
 
-            fetch("/api/v1/add-location", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ lat, lon, date }),
-            })
-                .then((response) => response.json())
-                .then((data) => {
-                    localStorage.setItem("response", JSON.stringify(data));
+            if (alreadyResponded) {
+                const myLocation = JSON.parse(localStorage.getItem("location"));
+                const key = myLocation.key;
+                const secret = myLocation.secret;
+                fetch("/api/v1/update-location", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({location: { lat, lon, time }, key, secret}),
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        localStorage.setItem("location", JSON.stringify(data));
+                        map.eachLayer((layer) => {
+                            if (layer instanceof L.Marker && layer.options.icon === userIcon) {
+                                map.removeLayer(layer);
+                            }
+                        });
+                        L.marker([lat, lon], { icon: userIcon }).addTo(map).bindPopup(parseDate(time));
+                    });
+            } else {
+                fetch("/api/v1/add-location", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ lat, lon, time }),
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        localStorage.setItem("location", JSON.stringify(data));
 
-                    alreadyResponded = true;
-                    intro.innerHTML = "Your location has been added to the map!";
+                        alreadyResponded = true;
+                        intro.innerHTML = "Your location has been added to the map!";
 
-                    L.marker([lat, lon], {icon: userIcon}).addTo(map).bindPopup(parseDate(date));
-                });
+                        L.marker([lat, lon], { icon: userIcon }).addTo(map).bindPopup(parseDate(time));
+                    });
+            }
         });
 
         fetch("/api/v1/get-locations")
             .then((response) => response.json())
-            .then((data) => {
-                const myLocation = JSON.parse(localStorage.getItem("response"));
-                data.forEach((location) => {
-                    if (myLocation && myLocation.lat === location.lat && myLocation.lon === location.lon && myLocation.date === location.date) {
-                        L.marker([location.lat, location.lon], {icon: userIcon}).addTo(map).bindPopup(parseDate(location.date));
+            .then((locations) => {
+                const myLocation = JSON.parse(localStorage.getItem("location"));
+                Object.keys(locations).forEach((key) => {
+                    const location = locations[key];
+                    if (myLocation && myLocation.key === key) {
+                        L.marker([location.lat, location.lon], { icon: userIcon }).addTo(map).bindPopup(parseDate(location.time));
                     } else {
-                        L.marker([location.lat, location.lon]).addTo(map).bindPopup(parseDate(location.date));
+                        L.marker([location.lat, location.lon]).addTo(map).bindPopup(parseDate(location.time));
                     }
                 });
             });

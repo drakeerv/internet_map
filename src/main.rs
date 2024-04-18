@@ -1,7 +1,7 @@
+use std::collections::HashMap;
+
 use axum::{
-    extract::State,
-    routing::{get, post},
-    Json, Router,
+    extract::State, http::StatusCode, routing::{get, post, put}, Json, Router
 };
 use serde::{Deserialize, Serialize};
 use tower_http::services::ServeDir;
@@ -18,7 +18,14 @@ struct AppState {
 struct Location {
     lat: f64,
     lon: f64,
-    date: u64,
+    time: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct StoredLocation {
+    location: Location,
+    secret: String,
+    key: String,
 }
 
 #[tokio::main]
@@ -38,7 +45,7 @@ async fn main() {
     // build our application with a route
     let app = Router::new()
         // serve static files
-        .nest_service("/", ServeDir::new("./".to_owned() + PUBLIC_DIR))
+        .nest_service("/", ServeDir::new(PUBLIC_DIR))
         // add routes
         .nest(
             "/api",
@@ -46,6 +53,7 @@ async fn main() {
                 "/v1",
                 Router::new()
                     .route("/add-location", post(add_location))
+                    .route("/update-location", put(update_location))
                     .route("/get-locations", get(get_locations)),
             ),
         )
@@ -58,23 +66,52 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn add_location(State(state): State<AppState>, location: Json<Location>) -> Json<Location> {
+async fn add_location(State(state): State<AppState>, location: Json<Location>) -> Json<StoredLocation> {
     let locations = state.db.open_tree("locations").unwrap();
-    let key = uuid::Uuid::new_v4().to_string();
-    let value = bincode::serialize(&location.0).unwrap();
-    locations.insert(key, value).unwrap();
 
-    location
+    let key = uuid::Uuid::new_v4().to_string();
+    let secret = uuid::Uuid::new_v4().to_string();
+    let stored_location = StoredLocation {
+        location: location.0,
+        secret,
+        key: key.clone(),
+    };
+    let value = bincode::serialize(&stored_location).unwrap();
+    locations.insert(&key, value).unwrap();
+
+    Json(stored_location)
 }
 
-async fn get_locations(State(state): State<AppState>) -> Json<Vec<Location>> {
+async fn update_location(State(state): State<AppState>, location: Json<StoredLocation>) -> Result<Json<StoredLocation>, StatusCode> {
     let locations = state.db.open_tree("locations").unwrap();
-    let mut result = Vec::with_capacity(locations.len());
+
+    if !locations.contains_key(&location.key).unwrap() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let value = locations.get(&location.key).unwrap().unwrap();
+    let stored_location: StoredLocation = bincode::deserialize(&value).unwrap();
+
+    if stored_location.secret != location.secret {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let value = bincode::serialize(&location.0).unwrap();
+    locations.insert(&location.key, value).unwrap();
+
+    Ok(location)
+}
+
+async fn get_locations(State(state): State<AppState>) -> Json<HashMap<String, Location>> {
+    let locations = state.db.open_tree("locations").unwrap();
+    let mut result = HashMap::with_capacity(locations.len());
 
     for location in locations.iter() {
-        let (_, value) = location.unwrap();
-        let location: Location = bincode::deserialize(&value).unwrap();
-        result.push(location);
+        let (key, value) = location.unwrap();
+        let id = std::str::from_utf8(&key).unwrap().to_string();
+        let stored_location: StoredLocation = bincode::deserialize(&value).unwrap();
+        let location = stored_location.location;
+        result.insert(id, location);
     }
 
     Json(result)
