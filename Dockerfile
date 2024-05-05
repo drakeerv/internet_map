@@ -3,7 +3,6 @@ FROM rust:1.77.2-bookworm as builder
 WORKDIR /usr/src/internet_map
 COPY . .
 
-RUN cargo install --path .
 RUN cargo build --release
 
 FROM debian:bookworm-slim
